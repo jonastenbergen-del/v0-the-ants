@@ -8,10 +8,11 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useAntsStore } from "@/lib/store"
-import { Calendar, Upload, X, Trash2, ImageIcon, ZoomIn, ChevronLeft, ChevronRight } from "lucide-react"
+import { Calendar, Upload, X, Trash2, ImageIcon, ZoomIn, ChevronLeft, ChevronRight, Loader2 } from "lucide-react"
 import { Card } from "@/components/ui/card"
 import { cn } from "@/lib/utils"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { useBlobUpload } from "@/hooks/use-blob-upload"
 
 interface GroundhogDialogProps {
   open: boolean
@@ -22,11 +23,13 @@ interface GroundhogDialogProps {
 export function GroundhogDialog({ open, onOpenChange, serverId }: GroundhogDialogProps) {
   const { servers, addGroundhogRun, deleteGroundhogRun } = useAntsStore()
   const server = servers.find((s) => s.id === serverId)
+  const { uploadMultiple, deleteFile, state: uploadState } = useBlobUpload()
 
   const [newRunDate, setNewRunDate] = useState("")
   const [newRunImages, setNewRunImages] = useState<string[]>([])
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null)
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null)
+  const [isCreating, setIsCreating] = useState(false)
 
   const groundhogRuns = server?.groundhogRuns || []
   const sortedRuns = [...groundhogRuns].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
@@ -44,30 +47,44 @@ export function GroundhogDialog({ open, onOpenChange, serverId }: GroundhogDialo
     }
   }
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || [])
-    files.forEach((file) => {
-      const reader = new FileReader()
-      reader.onloadend = () => {
-        setNewRunImages((prev) => [...prev, reader.result as string])
-      }
-      reader.readAsDataURL(file)
-    })
+    if (files.length === 0) return
+    
+    const urls = await uploadMultiple(files)
+    setNewRunImages((prev) => [...prev, ...urls])
   }
 
-  const handleCreateRun = () => {
+  const handleCreateRun = async () => {
     if (newRunDate && newRunImages.length > 0) {
+      setIsCreating(true)
       addGroundhogRun(serverId, newRunDate, newRunImages)
       setNewRunDate("")
       setNewRunImages([])
+      setIsCreating(false)
     }
   }
 
-  const handleDeleteRun = (runId: string) => {
+  const handleDeleteRun = async (runId: string) => {
+    const run = groundhogRuns.find((r) => r.id === runId)
+    if (run) {
+      // Delete all images from blob storage
+      for (const img of run.images) {
+        await deleteFile(img)
+      }
+    }
     deleteGroundhogRun(serverId, runId)
     if (selectedRunId === runId) {
       setSelectedRunId(null)
     }
+  }
+  
+  const handleRemoveNewImage = async (index: number) => {
+    const imageUrl = newRunImages[index]
+    if (imageUrl) {
+      await deleteFile(imageUrl)
+    }
+    setNewRunImages((prev) => prev.filter((_, i) => i !== index))
   }
 
   const formatDate = (dateString: string) => {
@@ -120,9 +137,19 @@ export function GroundhogDialog({ open, onOpenChange, serverId }: GroundhogDialo
                       size="sm"
                       className="w-full bg-transparent"
                       onClick={() => document.getElementById("run-images")?.click()}
+                      disabled={uploadState.isUploading}
                     >
-                      <Upload className="mr-2 size-4" />
-                      Upload Images
+                      {uploadState.isUploading ? (
+                        <>
+                          <Loader2 className="mr-2 size-4 animate-spin" />
+                          Uploading... {uploadState.progress}%
+                        </>
+                      ) : (
+                        <>
+                          <Upload className="mr-2 size-4" />
+                          Upload Images
+                        </>
+                      )}
                     </Button>
 
                     {newRunImages.length > 0 && (
@@ -136,7 +163,7 @@ export function GroundhogDialog({ open, onOpenChange, serverId }: GroundhogDialo
                             />
                             <button
                               type="button"
-                              onClick={() => setNewRunImages((prev) => prev.filter((_, i) => i !== idx))}
+                              onClick={() => handleRemoveNewImage(idx)}
                               className="absolute right-1 top-1 rounded-full bg-destructive p-1 text-destructive-foreground"
                             >
                               <X className="size-3" />
@@ -149,11 +176,18 @@ export function GroundhogDialog({ open, onOpenChange, serverId }: GroundhogDialo
 
                   <Button
                     onClick={handleCreateRun}
-                    disabled={!newRunDate || newRunImages.length === 0}
+                    disabled={!newRunDate || newRunImages.length === 0 || isCreating || uploadState.isUploading}
                     className="w-full bg-primary text-primary-foreground"
                     size="sm"
                   >
-                    Create Run
+                    {isCreating ? (
+                      <>
+                        <Loader2 className="mr-2 size-4 animate-spin" />
+                        Creating...
+                      </>
+                    ) : (
+                      "Create Run"
+                    )}
                   </Button>
                 </div>
               </Card>

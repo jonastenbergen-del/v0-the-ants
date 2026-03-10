@@ -5,11 +5,12 @@ import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Plus, Trash2, Upload, ZoomIn, X } from "lucide-react"
+import { Plus, Trash2, Upload, ZoomIn, X, Loader2 } from "lucide-react"
 import type { TroopType, UnitImage } from "@/lib/types"
 import { TroopIcon, getTroopColor, getTroopLabel } from "./troop-icon"
 import { cn } from "@/lib/utils"
 import { Dialog, DialogContent } from "@/components/ui/dialog"
+import { useBlobUpload } from "@/hooks/use-blob-upload"
 
 interface UnitImageManagerProps {
   unitImages: UnitImage[]
@@ -19,6 +20,9 @@ interface UnitImageManagerProps {
 export function UnitImageManager({ unitImages, onChange }: UnitImageManagerProps) {
   const [selectedTroopType, setSelectedTroopType] = useState<TroopType>("G")
   const [zoomedImage, setZoomedImage] = useState<string | null>(null)
+  const [uploadingUnitId, setUploadingUnitId] = useState<string | null>(null)
+  const [uploadingType, setUploadingType] = useState<"main" | "secondary" | null>(null)
+  const { uploadFile, deleteFile, state } = useBlobUpload()
 
   const handleAddUnit = () => {
     const newUnit: UnitImage = {
@@ -28,39 +32,70 @@ export function UnitImageManager({ unitImages, onChange }: UnitImageManagerProps
     onChange([...unitImages, newUnit])
   }
 
-  const handleRemoveUnit = (id: string) => {
+  const handleRemoveUnit = async (id: string) => {
+    const unit = unitImages.find((img) => img.id === id)
+    if (unit) {
+      // Delete images from blob storage
+      if (unit.mainUnitImage) {
+        await deleteFile(unit.mainUnitImage)
+      }
+      if (unit.secondaryUnitImages) {
+        for (const img of unit.secondaryUnitImages) {
+          await deleteFile(img)
+        }
+      }
+    }
     onChange(unitImages.filter((img) => img.id !== id))
   }
 
-  const handleMainImageUpload = (id: string, file: File) => {
-    const reader = new FileReader()
-    reader.onload = (e) => {
+  const handleMainImageUpload = async (id: string, file: File) => {
+    setUploadingUnitId(id)
+    setUploadingType("main")
+    
+    const url = await uploadFile(file)
+    
+    if (url) {
       const updatedImages = unitImages.map((img) =>
-        img.id === id ? { ...img, mainUnitImage: e.target?.result as string } : img,
+        img.id === id ? { ...img, mainUnitImage: url } : img,
       )
       onChange(updatedImages)
     }
-    reader.readAsDataURL(file)
+    
+    setUploadingUnitId(null)
+    setUploadingType(null)
   }
 
-  const handleSecondaryImageUpload = (id: string, file: File) => {
-    const reader = new FileReader()
-    reader.onload = (e) => {
+  const handleSecondaryImageUpload = async (id: string, file: File) => {
+    setUploadingUnitId(id)
+    setUploadingType("secondary")
+    
+    const url = await uploadFile(file)
+    
+    if (url) {
       const updatedImages = unitImages.map((img) => {
         if (img.id === id) {
           return {
             ...img,
-            secondaryUnitImages: [...(img.secondaryUnitImages || []), e.target?.result as string],
+            secondaryUnitImages: [...(img.secondaryUnitImages || []), url],
           }
         }
         return img
       })
       onChange(updatedImages)
     }
-    reader.readAsDataURL(file)
+    
+    setUploadingUnitId(null)
+    setUploadingType(null)
   }
 
-  const handleRemoveSecondaryImage = (unitId: string, imageIndex: number) => {
+  const handleRemoveSecondaryImage = async (unitId: string, imageIndex: number) => {
+    const unit = unitImages.find((img) => img.id === unitId)
+    const imageUrl = unit?.secondaryUnitImages?.[imageIndex]
+    
+    if (imageUrl) {
+      await deleteFile(imageUrl)
+    }
+    
     const updatedImages = unitImages.map((img) => {
       if (img.id === unitId) {
         return {
@@ -124,7 +159,14 @@ export function UnitImageManager({ unitImages, onChange }: UnitImageManagerProps
               <div className="space-y-3">
                 <div className="space-y-2">
                   <Label className="text-xs text-muted-foreground">Main Unit Image</Label>
-                  {unit.mainUnitImage ? (
+                  {uploadingUnitId === unit.id && uploadingType === "main" ? (
+                    <div className="flex items-center justify-center rounded-lg border-2 border-dashed border-primary/50 bg-muted/20 p-4">
+                      <div className="text-center">
+                        <Loader2 className="mx-auto mb-1 size-6 animate-spin text-primary" />
+                        <p className="text-xs text-muted-foreground">Uploading...</p>
+                      </div>
+                    </div>
+                  ) : unit.mainUnitImage ? (
                     <div className="group relative overflow-hidden rounded-lg border border-border">
                       <img
                         src={unit.mainUnitImage || "/placeholder.svg"}
@@ -185,18 +227,24 @@ export function UnitImageManager({ unitImages, onChange }: UnitImageManagerProps
                       </div>
                     ))}
                     {(!unit.secondaryUnitImages || unit.secondaryUnitImages.length < 6) && (
-                      <label className="flex h-24 cursor-pointer items-center justify-center rounded-lg border-2 border-dashed border-border bg-muted/20 transition-colors hover:border-primary/50">
-                        <input
-                          type="file"
-                          accept="image/*"
-                          className="hidden"
-                          onChange={(e) => {
-                            const file = e.target.files?.[0]
-                            if (file) handleSecondaryImageUpload(unit.id, file)
-                          }}
-                        />
-                        <Plus className="size-5 text-muted-foreground" />
-                      </label>
+                      uploadingUnitId === unit.id && uploadingType === "secondary" ? (
+                        <div className="flex h-24 items-center justify-center rounded-lg border-2 border-dashed border-primary/50 bg-muted/20">
+                          <Loader2 className="size-5 animate-spin text-primary" />
+                        </div>
+                      ) : (
+                        <label className="flex h-24 cursor-pointer items-center justify-center rounded-lg border-2 border-dashed border-border bg-muted/20 transition-colors hover:border-primary/50">
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0]
+                              if (file) handleSecondaryImageUpload(unit.id, file)
+                            }}
+                          />
+                          <Plus className="size-5 text-muted-foreground" />
+                        </label>
+                      )
                     )}
                   </div>
                 </div>
