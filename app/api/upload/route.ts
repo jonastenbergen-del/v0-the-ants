@@ -10,9 +10,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No file provided' }, { status: 400 })
     }
 
-    // Validate file type
-    if (!file.type.startsWith('image/')) {
-      return NextResponse.json({ error: 'Only image files are allowed' }, { status: 400 })
+    // Validate file type - only allow jpg, png, webp
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/jpg']
+    if (!allowedTypes.includes(file.type)) {
+      return NextResponse.json({ error: 'Only JPG, PNG, and WebP files are allowed' }, { status: 400 })
+    }
+    
+    // Validate file size - max 5MB
+    const maxSize = 5 * 1024 * 1024 // 5MB
+    if (file.size > maxSize) {
+      return NextResponse.json({ error: 'File size must be less than 5MB' }, { status: 400 })
     }
 
     // Generate a unique filename with timestamp and random string

@@ -13,8 +13,9 @@ import { useAntsStore } from "@/lib/store"
 import type { TroopType, MainUnit } from "@/lib/types"
 import { getTroopLabel } from "@/components/troop-icon"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { AlertCircle, UserPlus, RefreshCw, Upload, X } from "lucide-react"
+import { AlertCircle, UserPlus, RefreshCw, Upload, X, Loader2 } from "lucide-react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { useBlobUpload } from "@/hooks/use-blob-upload"
 
 interface NewMemberDialogProps {
   open: boolean
@@ -38,15 +39,26 @@ export function NewMemberDialog({ open, onOpenChange }: NewMemberDialogProps) {
   } | null>(null)
 
   const { selectedServerId, selectedClanId, addMember, findMemberByName, transferMember, servers } = useAntsStore()
+  const { uploadFile, deleteFile, state: uploadState } = useBlobUpload()
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (file) {
-      const reader = new FileReader()
-      reader.onloadend = () => {
-        setProfileImage(reader.result as string)
+      // Delete old image if exists
+      if (profileImage) {
+        await deleteFile(profileImage)
       }
-      reader.readAsDataURL(file)
+      const url = await uploadFile(file)
+      if (url) {
+        setProfileImage(url)
+      }
+    }
+  }
+  
+  const handleRemoveImage = async () => {
+    if (profileImage) {
+      await deleteFile(profileImage)
+      setProfileImage(undefined)
     }
   }
 
@@ -149,12 +161,22 @@ export function NewMemberDialog({ open, onOpenChange }: NewMemberDialogProps) {
                   variant="outline"
                   size="sm"
                   onClick={() => document.getElementById("profile-pic")?.click()}
+                  disabled={uploadState.isUploading}
                 >
-                  <Upload className="mr-2 size-4" />
-                  Upload Image
+                  {uploadState.isUploading ? (
+                    <>
+                      <Loader2 className="mr-2 size-4 animate-spin" />
+                      Uploading...
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="mr-2 size-4" />
+                      Upload Image
+                    </>
+                  )}
                 </Button>
                 {profileImage && (
-                  <Button type="button" variant="ghost" size="sm" onClick={() => setProfileImage(undefined)}>
+                  <Button type="button" variant="ghost" size="sm" onClick={handleRemoveImage}>
                     <X className="mr-2 size-4" />
                     Remove
                   </Button>

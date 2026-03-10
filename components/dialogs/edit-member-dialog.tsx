@@ -12,7 +12,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 
-import { Upload, X } from "lucide-react"
+import { Upload, X, Loader2 } from "lucide-react"
+import { useBlobUpload } from "@/hooks/use-blob-upload"
 
 import { useAntsStore } from "@/lib/store"
 import type { TroopType, UnitImage, MainUnit } from "@/lib/types"
@@ -29,6 +30,7 @@ interface EditMemberDialogProps {
 
 export function EditMemberDialog({ open, onOpenChange, serverId, clanId, memberId }: EditMemberDialogProps) {
   const { servers, updateMember } = useAntsStore()
+  const { uploadFile, deleteFile, state: uploadState } = useBlobUpload()
 
   const server = servers.find((s) => s.id === serverId)
   const clan = server?.clans.find((c) => c.id === clanId)
@@ -58,15 +60,25 @@ export function EditMemberDialog({ open, onOpenChange, serverId, clanId, memberI
     setActiveTime(member.activeTime || "")
   }, [member])
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
 
-    const reader = new FileReader()
-    reader.onloadend = () => {
-      setProfileImage(reader.result as string)
+    // Delete old image if exists
+    if (profileImage) {
+      await deleteFile(profileImage)
     }
-    reader.readAsDataURL(file)
+    const url = await uploadFile(file)
+    if (url) {
+      setProfileImage(url)
+    }
+  }
+  
+  const handleRemoveImage = async () => {
+    if (profileImage) {
+      await deleteFile(profileImage)
+      setProfileImage(undefined)
+    }
   }
 
   const handleSave = () => {
@@ -136,13 +148,23 @@ export function EditMemberDialog({ open, onOpenChange, serverId, clanId, memberI
                       variant="outline"
                       size="sm"
                       onClick={() => document.getElementById("profile-pic-edit")?.click()}
+                      disabled={uploadState.isUploading}
                     >
-                      <Upload className="mr-2 size-4" />
-                      Upload Image
+                      {uploadState.isUploading ? (
+                        <>
+                          <Loader2 className="mr-2 size-4 animate-spin" />
+                          Uploading...
+                        </>
+                      ) : (
+                        <>
+                          <Upload className="mr-2 size-4" />
+                          Upload Image
+                        </>
+                      )}
                     </Button>
 
                     {profileImage && (
-                      <Button type="button" variant="ghost" size="sm" onClick={() => setProfileImage(undefined)}>
+                      <Button type="button" variant="ghost" size="sm" onClick={handleRemoveImage}>
                         <X className="mr-2 size-4" />
                         Remove
                       </Button>
