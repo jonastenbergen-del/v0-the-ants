@@ -38,10 +38,12 @@ export default function HomePage() {
       
       if (user) {
         fetchServers()
+      } else {
+        router.push("/auth/login")
       }
     }
     checkAuth()
-  }, [fetchServers])
+  }, [fetchServers, router])
 
   const handleLogout = async () => {
     const supabase = createClient()
@@ -49,16 +51,7 @@ export default function HomePage() {
     router.push("/auth/login")
   }
 
-  if (authLoading) {
-    return (
-      <div className="flex h-screen items-center justify-center bg-background">
-        <Loader2 className="size-8 animate-spin text-primary" />
-      </div>
-    )
-  }
-
-  if (!user) {
-    router.push("/auth/login")
+  if (authLoading || !user) {
     return (
       <div className="flex h-screen items-center justify-center bg-background">
         <Loader2 className="size-8 animate-spin text-primary" />
