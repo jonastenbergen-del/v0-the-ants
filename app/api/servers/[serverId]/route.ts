@@ -14,11 +14,15 @@ export async function PUT(
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
-  const { name } = await request.json()
+  const { serverNumber, notes } = await request.json()
+
+  const updateData: Record<string, string | undefined> = {}
+  if (serverNumber !== undefined) updateData.server_number = serverNumber
+  if (notes !== undefined) updateData.notes = notes
 
   const { data: server, error } = await supabase
     .from("servers")
-    .update({ name })
+    .update(updateData)
     .eq("id", serverId)
     .select()
     .single()
@@ -27,7 +31,11 @@ export async function PUT(
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  return NextResponse.json(server)
+  return NextResponse.json({
+    id: server.id,
+    serverNumber: server.server_number,
+    notes: server.notes
+  })
 }
 
 // DELETE server

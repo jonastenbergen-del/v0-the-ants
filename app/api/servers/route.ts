@@ -40,24 +40,38 @@ export async function GET() {
   // Transform data to match existing frontend format
   const transformedServers = servers?.map(server => ({
     id: server.id,
-    name: server.name,
+    serverNumber: server.server_number,
+    notes: server.notes,
     clans: server.clans?.map((clan: any) => ({
       id: clan.id,
       name: clan.name,
+      tag: clan.tag,
+      language: clan.language,
+      activeTimeWindow: clan.active_time_window,
+      pvpFocus: clan.pvp_focus,
+      notes: clan.notes,
       members: clan.members?.map((member: any) => ({
         id: member.id,
         name: member.name,
         mainClass: member.main_class,
-        secondaryClasses: member.member_secondary_classes?.map((sc: any) => sc.class_name) || [],
-        profileImage: member.profile_image,
+        secondaryClasses: member.member_secondary_classes?.map((sc: any) => ({ 
+          type: sc.troop_type, 
+          weight: sc.weight 
+        })) || [],
         power: member.power,
-        kills: member.kills,
+        activityStatus: member.activity_status || 'unknown',
+        mainUnitImage: member.main_unit_image,
+        notes: member.notes,
+        pvpRole: member.pvp_role,
+        activeTime: member.active_time,
         clanHistory: member.member_clan_history?.map((ch: any) => ({
-          id: ch.id,
-          clanId: ch.clan_id,
+          serverNumber: ch.server_number,
+          serverName: ch.server_name,
           clanName: ch.clan_name,
-          joinedAt: ch.joined_at,
-          leftAt: ch.left_at || undefined
+          clanTag: ch.clan_tag,
+          startDate: ch.start_date,
+          endDate: ch.end_date,
+          note: ch.note
         })) || [],
         unitImages: member.unit_images?.map((ui: any) => ({
           id: ui.id,
@@ -69,7 +83,7 @@ export async function GET() {
     })) || [],
     groundhogRuns: server.groundhog_runs?.map((run: any) => ({
       id: run.id,
-      date: run.date,
+      date: run.run_date,
       images: run.groundhog_run_images?.map((img: any) => img.image_url) || []
     })) || []
   })) || []
@@ -86,21 +100,23 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
-  const { name } = await request.json()
+  const { serverNumber, notes } = await request.json()
 
   const { data: server, error } = await supabase
     .from("servers")
-    .insert({ name })
+    .insert({ server_number: serverNumber, notes })
     .select()
     .single()
 
   if (error) {
+    console.error("[v0] Error creating server:", error)
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
   return NextResponse.json({
     id: server.id,
-    name: server.name,
+    serverNumber: server.server_number,
+    notes: server.notes,
     clans: [],
     groundhogRuns: []
   })

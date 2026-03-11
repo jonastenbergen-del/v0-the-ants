@@ -21,27 +21,29 @@ export async function POST(
     .from("groundhog_runs")
     .insert({
       server_id: serverId,
-      date
+      run_date: date
     })
     .select()
     .single()
 
   if (runError) {
+    console.error("[v0] Error creating groundhog run:", runError)
     return NextResponse.json({ error: runError.message }, { status: 500 })
   }
 
   // Insert images
   if (images && images.length > 0) {
-    const imageData = images.map((url: string) => ({
+    const imageData = images.map((url: string, idx: number) => ({
       groundhog_run_id: run.id,
-      image_url: url
+      image_url: url,
+      sort_order: idx
     }))
     await supabase.from("groundhog_run_images").insert(imageData)
   }
 
   return NextResponse.json({
     id: run.id,
-    date: run.date,
+    date: run.run_date,
     images: images || []
   })
 }

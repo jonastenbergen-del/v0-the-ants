@@ -7,7 +7,7 @@ export async function POST(
   { params }: { params: Promise<{ serverId: string; clanId: string }> }
 ) {
   const supabase = await createClient()
-  const { clanId } = await params
+  const { serverId, clanId } = await params
   
   const { data: { user }, error: authError } = await supabase.auth.getUser()
   if (authError || !user) {
@@ -15,12 +15,29 @@ export async function POST(
   }
 
   const body = await request.json()
-  const { name, mainClass, secondaryClasses, profileImage, power, kills, unitImages } = body
+  const { 
+    name, 
+    mainClass, 
+    secondaryClasses, 
+    power, 
+    activityStatus, 
+    mainUnitImage, 
+    notes, 
+    pvpRole, 
+    activeTime,
+    unitImages 
+  } = body
 
-  // Get clan name for history
+  // Get server and clan info for history
+  const { data: server } = await supabase
+    .from("servers")
+    .select("server_number")
+    .eq("id", serverId)
+    .single()
+
   const { data: clan } = await supabase
     .from("clans")
-    .select("name")
+    .select("name, tag")
     .eq("id", clanId)
     .single()
 
@@ -30,34 +47,31 @@ export async function POST(
     .insert({
       name,
       main_class: mainClass,
-      profile_image: profileImage,
-      power: power || 0,
-      kills: kills || 0,
+      power: power || null,
+      activity_status: activityStatus || 'unknown',
+      main_unit_image: mainUnitImage,
+      notes,
+      pvp_role: pvpRole,
+      active_time: activeTime,
       clan_id: clanId
     })
     .select()
     .single()
 
   if (memberError) {
+    console.error("[v0] Error creating member:", memberError)
     return NextResponse.json({ error: memberError.message }, { status: 500 })
   }
 
   // Insert secondary classes
   if (secondaryClasses && secondaryClasses.length > 0) {
-    const secondaryClassesData = secondaryClasses.map((className: string) => ({
+    const secondaryClassesData = secondaryClasses.map((sc: { type: string; weight: number }) => ({
       member_id: member.id,
-      class_name: className
+      troop_type: sc.type,
+      weight: sc.weight || 1
     }))
     await supabase.from("member_secondary_classes").insert(secondaryClassesData)
   }
-
-  // Insert clan history
-  await supabase.from("member_clan_history").insert({
-    member_id: member.id,
-    clan_id: clanId,
-    clan_name: clan?.name || "Unknown",
-    joined_at: new Date().toISOString()
-  })
 
   // Insert unit images
   if (unitImages && unitImages.length > 0) {
@@ -73,9 +87,10 @@ export async function POST(
         .single()
 
       if (!uiError && ui.secondaryUnitImages && ui.secondaryUnitImages.length > 0) {
-        const secondaryImages = ui.secondaryUnitImages.map((url: string) => ({
+        const secondaryImages = ui.secondaryUnitImages.map((url: string, idx: number) => ({
           unit_image_id: unitImage.id,
-          image_url: url
+          image_url: url,
+          sort_order: idx
         }))
         await supabase.from("unit_secondary_images").insert(secondaryImages)
       }
@@ -88,15 +103,13 @@ export async function POST(
     name: member.name,
     mainClass: member.main_class,
     secondaryClasses: secondaryClasses || [],
-    profileImage: member.profile_image,
     power: member.power,
-    kills: member.kills,
-    clanHistory: [{
-      id: crypto.randomUUID(),
-      clanId,
-      clanName: clan?.name || "Unknown",
-      joinedAt: new Date().toISOString()
-    }],
+    activityStatus: member.activity_status,
+    mainUnitImage: member.main_unit_image,
+    notes: member.notes,
+    pvpRole: member.pvp_role,
+    activeTime: member.active_time,
+    clanHistory: [],
     unitImages: unitImages || []
   })
 }
